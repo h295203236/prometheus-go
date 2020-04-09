@@ -181,7 +181,7 @@ func main() {
 
 	logger.Println("Starting init config...")
 	initConf()
-	logger.Printf("Starting  server: :%d%s\n", config.Port, config.Pattern)
+	logger.Printf("Starting server: :%d%s\n", config.Port, config.Pattern)
 	HTTPForward(config.Pattern, config.Port)
 	// tmpData := `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"node_memory_MemTotal_bytes","instance":"192.168.1.121","job":"Host","orgtoken":"1"},"values":[[1586416665,"3605553152"],[1586420265,"3605553152"]]}]}}`
 	// tmpData := `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"orgtoken":"1"},"values":[[1586416665,"3605553152"],[1586420265,"3605553152"]]}]}}`
