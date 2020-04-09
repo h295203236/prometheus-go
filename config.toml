@@ -2,3 +2,5 @@
 pattern = "/"
 port = 9999
 prometheus_server = "http://192.168.1.121:9090"
+
+debug = true

@@ -1,3 +1,6 @@
+// forward prometheus requests from grafana.
+// token tag add impl deps prometheus/promql/parser/printer.go
+
 package main
 
 import (
@@ -13,24 +16,27 @@ import (
 	"strconv"
 	"strings"
 
+	"log"
+
 	"github.com/BurntSushi/toml"
 	promql "github.com/h295203236/prometheus/promql/parser"
 )
 
 // Config info
 type Config struct {
-	Pattern    string `toml:"pattern"`
-	Port       int    `toml:"port"`
-	PromServer string `toml:"prometheus_server"`
+	Pattern     string `toml:"pattern"`
+	Port        int    `toml:"port"`
+	PromServer  string `toml:"prometheus_server"`
+	EnableDebug bool   `toml:"debug"`
 }
 
 // HTTPForward prometheus http requests forward.
 func HTTPForward(pattern string, port int) {
-	fmt.Printf("listening on: :%v%v\n", port, pattern)
+	log.Printf("[HTTPForward]listening on: :%d%s\n", port, pattern)
 	http.HandleFunc(pattern, httpServe)
 	err := http.ListenAndServe(":"+strconv.Itoa(port), nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("[HTTPForward]listening on: :%s\n", err)
 		os.Exit(100)
 	}
 }
@@ -39,7 +45,7 @@ func httpServe(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{}
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("[httpServe]read request body error: %s\n", err)
 	}
 
 	// Parse query and put the orgId labels.
@@ -58,7 +64,7 @@ func httpServe(w http.ResponseWriter, r *http.Request) {
 	reqURL := fmt.Sprintf("%s/%s?%s", config.PromServer, r.URL.Path, query.Encode())
 	req, err := http.NewRequest(r.Method, reqURL, strings.NewReader(string(body)))
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("[httpServe]Create http.NewReuqest error: %s\n", err)
 		return
 	}
 	// Set Request Header and Do Request
@@ -67,7 +73,7 @@ func httpServe(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("[httpServe]Create client.Do error: %s\n", err)
 	}
 	defer resp.Body.Close() // Close res when no need.
 
@@ -108,11 +114,14 @@ func reGenerateQueryParam(expr string, token string) string {
 	var re string
 	parseExpr, err := promql.ParseExpr(expr)
 	if err != nil {
-		fmt.Println(err)
+		log.Printf("[reGenerateQueryParam]parser prometheus expr error: %s\n", err)
 		return re
 	}
 	re = strings.ReplaceAll(parseExpr.String(), "__org_token__", token)
-	fmt.Println(re)
+	if config.EnableDebug {
+		log.Printf("[reGenerateQueryParam]paser src expr: %s\n", expr)
+		log.Printf("[reGenerateQueryParam]paser dst expr: %s\n", re)
+	}
 	return re
 }
 
@@ -134,7 +143,10 @@ func PathExists(path string) (bool, error) {
 	return false, err
 }
 
-var config *Config
+var (
+	config *Config
+	logger *log.Logger
+)
 
 func initConf() {
 	filePath := "./config.toml"
@@ -146,7 +158,6 @@ func getConf(filePath string) {
 	if isExist, _ := PathExists(filePath); !isExist {
 		panic("File path no exist: " + filePath)
 	}
-	fmt.Println(filePath)
 	if _, err := toml.DecodeFile(filePath, &config); err != nil {
 		panic(err)
 	}
@@ -162,8 +173,15 @@ func getConf(filePath string) {
 }
 
 func main() {
+	logFile, err := os.OpenFile("server.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		panic("Failed to open log file: " + err.Error())
+	}
+	logger = log.New(logFile, "", log.Ldate|log.Ltime|log.LUTC|log.Llongfile)
+
+	logger.Println("Starting init config...")
 	initConf()
-	fmt.Println(config)
+	logger.Printf("Starting  server: :%d%s\n", config.Port, config.Pattern)
 	HTTPForward(config.Pattern, config.Port)
 	// tmpData := `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"node_memory_MemTotal_bytes","instance":"192.168.1.121","job":"Host","orgtoken":"1"},"values":[[1586416665,"3605553152"],[1586420265,"3605553152"]]}]}}`
 	// tmpData := `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"orgtoken":"1"},"values":[[1586416665,"3605553152"],[1586420265,"3605553152"]]}]}}`
